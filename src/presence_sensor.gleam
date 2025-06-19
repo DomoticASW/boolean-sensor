@@ -15,7 +15,7 @@ pub type PresenceSensor {
     name: String,
     state: State,
     loop_timer: Subject(timer_actor.Message),
-    random_detect_presence: Subject(timer_actor.Message),
+    detect_presence_timer: Subject(timer_actor.Message),
     server_addr: option.Option(ServerAddress),
     prev_state: State,
   )
