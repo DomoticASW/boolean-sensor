@@ -1,7 +1,12 @@
+import gleam/bool
 import gleam/erlang/process.{type Subject}
+import gleam/http/request
+import gleam/httpc.{FailedToConnect, InvalidUtf8Response}
 import gleam/int
+import gleam/io
 import gleam/option.{None, Some}
 import gleam/otp/actor
+import gleam/string
 import timer_actor
 
 pub type PresenceSensor {
@@ -71,22 +76,21 @@ fn handle_message(
   msg: timer_actor.TimePassed(Message),
 ) -> actor.Next(PresenceSensor, timer_actor.TimePassed(Message)) {
   case msg {
-    timer_actor.TimePassed(sender: timer, ms: _) -> {
-      case timer == ps.loop_timer {
-        False ->
-          case int.random(5) {
-            0 -> PresenceSensor(..ps, state: PresenceDetected)
-            _ -> PresenceSensor(..ps, state: PresenceNotDetected)
-          }
-        True -> {
-          case ps.server_addr {
-            None -> ps
-            Some(_) -> todo as "send updates to server"
-          }
+    timer_actor.TimePassed(sender: timer, ..) if timer == ps.loop_timer ->
+      case int.random(5) {
+        0 -> PresenceSensor(..ps, state: PresenceDetected)
+        _ -> PresenceSensor(..ps, state: PresenceNotDetected)
+      }
+      |> actor.continue
+    timer_actor.TimePassed(..) ->
+      case ps.server_addr {
+        None -> ps
+        Some(ServerAddress(host:, port:)) -> {
+          send_state(ps, host, port)
+          ps
         }
       }
       |> actor.continue
-    }
     timer_actor.Other(value) ->
       case value {
         ExecuteAction(sender:, action_id: _) -> {
@@ -103,4 +107,43 @@ fn handle_message(
         }
       }
   }
+}
+
+pub fn send_state(ps: PresenceSensor, host: String, port: Int) -> Nil {
+  process.spawn_unlinked(fn() {
+    let assert Ok(req) =
+      request.to(
+        "http://"
+        <> host
+        <> ":"
+        <> int.to_string(port)
+        <> "/api/devices/"
+        <> ps.id
+        <> "/property/presence-detected",
+      )
+
+    let value =
+      case ps.state {
+        PresenceDetected -> True
+        PresenceNotDetected -> False
+      }
+      |> bool.to_string
+      |> string.lowercase
+
+    let response =
+      req
+      |> request.prepend_header("Content-Type", "application/json")
+      |> request.set_body("{value: " <> value <> "}")
+      |> httpc.send()
+
+    case response {
+      Error(InvalidUtf8Response) -> io.println_error("Invalid UTF8 reponse")
+      Error(FailedToConnect(_, _)) -> io.println_error("Failed to connect")
+      Ok(res) if res.status >= 200 && res.status < 300 -> Nil
+      Ok(res) ->
+        { "Error in response " <> int.to_string(res.status) <> " " <> res.body }
+        |> io.println_error
+    }
+  })
+  Nil
 }
