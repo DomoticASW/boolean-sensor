@@ -17,6 +17,7 @@ pub type PresenceSensor {
     loop_timer: Subject(timer_actor.Message),
     random_detect_presence: Subject(timer_actor.Message),
     server_addr: option.Option(ServerAddress),
+    prev_state: State,
   )
 }
 
@@ -62,6 +63,7 @@ pub fn actor() -> Result(
       loop_timer.data,
       detect_presence_timer.data,
       None,
+      PresenceNotDetected,
     )
     |> actor.initialised()
     |> actor.returning(self)
@@ -81,32 +83,31 @@ fn handle_message(
         0 -> PresenceSensor(..ps, state: PresenceDetected)
         _ -> PresenceSensor(..ps, state: PresenceNotDetected)
       }
-      |> actor.continue
     timer_actor.TimePassed(..) ->
-      case ps.server_addr {
-        None -> ps
-        Some(ServerAddress(host:, port:)) -> {
+      case ps.server_addr, ps.prev_state {
+        Some(ServerAddress(host:, port:)), prev_s if prev_s != ps.state -> {
           send_state(ps, host, port)
           ps
         }
+        _, _ -> ps
       }
-      |> actor.continue
     timer_actor.Other(value) ->
       case value {
         ExecuteAction(sender:, action_id: _) -> {
           actor.send(sender, ExecuteActionResp("Action not found"))
-          actor.continue(ps)
+          ps
         }
         StatusCheck(sender:) -> {
           actor.send(sender, StatusCheckResp)
-          actor.continue(ps)
+          ps
         }
         Register(sender:, server_addr:) -> {
           actor.send(sender, RegisterResp(Description))
-          actor.continue(PresenceSensor(..ps, server_addr: Some(server_addr)))
+          PresenceSensor(..ps, server_addr: Some(server_addr))
         }
       }
   }
+  |> actor.continue
 }
 
 pub fn send_state(ps: PresenceSensor, host: String, port: Int) -> Nil {
