@@ -110,7 +110,7 @@ fn handle_message(
   |> actor.continue
 }
 
-pub fn send_state(ps: PresenceSensor, host: String, port: Int) -> Nil {
+fn send_state(ps: PresenceSensor, host: String, port: Int) -> Nil {
   process.spawn_unlinked(fn() {
     let assert Ok(req) =
       request.to(
