@@ -4,7 +4,8 @@ import gleam/http/request
 import gleam/httpc.{FailedToConnect, InvalidUtf8Response}
 import gleam/int
 import gleam/io
-import gleam/option.{None, Some}
+import gleam/json.{type Json}
+import gleam/option.{Some}
 import gleam/otp/actor
 import gleam/string
 import timer_actor
@@ -19,6 +20,13 @@ pub type PresenceSensor {
     server_addr: option.Option(ServerAddress),
     prev_state: State,
   )
+}
+
+pub fn presence_detected(p: PresenceSensor) -> Bool {
+  case p.state {
+    PresenceDetected -> True
+    PresenceNotDetected -> False
+  }
 }
 
 pub type State {
@@ -36,12 +44,81 @@ pub type Message {
   ExecuteAction(sender: Subject(Response), action_id: String)
 }
 
-pub type Description {
-  Description
+pub type Never
+
+pub type DeviceDescription {
+  DeviceDescription(
+    id: String,
+    name: String,
+    properties: List(DevicePropertyDescription),
+    actions: List(Never),
+    events: List(String),
+  )
+}
+
+pub type DevicePropertyDescription {
+  DevicePropertyDescription(
+    id: String,
+    name: String,
+    value: Bool,
+    // To be updated if the device complexity grows
+    type_constraints: TypeConstraintsDescription,
+  )
+}
+
+pub fn encode_device_property_description(d: DevicePropertyDescription) -> Json {
+  json.object([
+    #("id", json.string(d.id)),
+    #("name", json.string(d.name)),
+    #("value", json.bool(d.value)),
+    #(
+      "typeConstraints",
+      encode_type_constraints_description(d.type_constraints),
+    ),
+  ])
+}
+
+pub type Types {
+  BoolType
+}
+
+pub fn encode_types(type_: Types) -> Json {
+  case type_ {
+    BoolType -> json.string("Boolean")
+  }
+}
+
+pub type TypeConstraintsDescription {
+  None(type_: Types)
+}
+
+pub fn encode_type_constraints_description(
+  tc: TypeConstraintsDescription,
+) -> Json {
+  case tc {
+    None(type_:) ->
+      json.object([
+        #("constraint", json.string("None")),
+        #("type", encode_types(type_)),
+      ])
+  }
+}
+
+pub fn encode_device_description(d: DeviceDescription) -> Json {
+  json.object([
+    #("id", json.string(d.id)),
+    #("name", json.string(d.name)),
+    #(
+      "properties",
+      json.array(d.properties, encode_device_property_description),
+    ),
+    #("actions", json.preprocessed_array([])),
+    #("events", json.array(d.events, json.string)),
+  ])
 }
 
 pub type Response {
-  RegisterResp(description: Description)
+  RegisterResp(description: DeviceDescription)
   StatusCheckResp
   ExecuteActionResp(error: String)
 }
@@ -62,7 +139,7 @@ pub fn actor() -> Result(
       PresenceNotDetected,
       loop_timer.data,
       detect_presence_timer.data,
-      None,
+      option.None,
       PresenceNotDetected,
     )
     |> actor.initialised()
@@ -102,7 +179,25 @@ fn handle_message(
           ps
         }
         Register(sender:, server_addr:) -> {
-          actor.send(sender, RegisterResp(Description))
+          actor.send(
+            sender,
+            RegisterResp(
+              DeviceDescription(
+                "presence-sensor",
+                "Presence sensor",
+                [
+                  DevicePropertyDescription(
+                    "presence-detected",
+                    "Presence detected",
+                    presence_detected(ps),
+                    None(BoolType),
+                  ),
+                ],
+                [],
+                ["presence-detected", "presence-not-detected"],
+              ),
+            ),
+          )
           PresenceSensor(..ps, server_addr: Some(server_addr))
         }
       }
@@ -124,10 +219,7 @@ fn send_state(ps: PresenceSensor, host: String, port: Int) -> Nil {
       )
 
     let value =
-      case ps.state {
-        PresenceDetected -> True
-        PresenceNotDetected -> False
-      }
+      presence_detected(ps)
       |> bool.to_string
       |> string.lowercase
 
