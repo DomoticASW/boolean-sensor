@@ -5,7 +5,6 @@ import gleam/http/request
 import gleam/httpc.{FailedToConnect, InvalidUtf8Response}
 import gleam/int
 import gleam/io
-import gleam/json.{type Json}
 import gleam/option.{Some}
 import gleam/otp/actor
 import gleam/string
@@ -75,55 +74,12 @@ pub type DevicePropertyDescription {
   )
 }
 
-pub fn encode_device_property_description(d: DevicePropertyDescription) -> Json {
-  json.object([
-    #("id", json.string(d.id)),
-    #("name", json.string(d.name)),
-    #("value", json.bool(d.value)),
-    #(
-      "typeConstraints",
-      encode_type_constraints_description(d.type_constraints),
-    ),
-  ])
-}
-
 pub type Types {
   BoolType
 }
 
-pub fn encode_types(type_: Types) -> Json {
-  case type_ {
-    BoolType -> json.string("Boolean")
-  }
-}
-
 pub type TypeConstraintsDescription {
   None(type_: Types)
-}
-
-pub fn encode_type_constraints_description(
-  tc: TypeConstraintsDescription,
-) -> Json {
-  case tc {
-    None(type_:) ->
-      json.object([
-        #("constraint", json.string("None")),
-        #("type", encode_types(type_)),
-      ])
-  }
-}
-
-pub fn encode_device_description(d: DeviceDescription) -> Json {
-  json.object([
-    #("id", json.string(d.id)),
-    #("name", json.string(d.name)),
-    #(
-      "properties",
-      json.array(d.properties, encode_device_property_description),
-    ),
-    #("actions", json.preprocessed_array([])),
-    #("events", json.array(d.events, json.string)),
-  ])
 }
 
 pub type Response {
