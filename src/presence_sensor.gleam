@@ -1,5 +1,6 @@
 import gleam/bool
 import gleam/erlang/process.{type Subject}
+import gleam/http.{Patch}
 import gleam/http/request
 import gleam/httpc.{FailedToConnect, InvalidUtf8Response}
 import gleam/int
@@ -15,10 +16,8 @@ pub type PresenceSensor {
     id: String,
     name: String,
     state: State,
-    loop_timer: Subject(timer_actor.Message),
     detect_presence_timer: Subject(timer_actor.Message),
     server_addr: option.Option(ServerAddress),
-    prev_state: State,
   )
 }
 
@@ -43,6 +42,16 @@ pub type Message {
   StatusCheck(sender: Subject(Response))
   ExecuteAction(sender: Subject(Response), action_id: String)
 }
+
+pub fn register_msg(
+  sender: Subject(Response),
+  server_addr: ServerAddress,
+) -> PresenceSensorMessage {
+  timer_actor.Other(Register(sender:, server_addr:))
+}
+
+pub type PresenceSensorMessage =
+  timer_actor.TimePassed(Message)
 
 pub type Never
 
@@ -118,18 +127,16 @@ pub fn encode_device_description(d: DeviceDescription) -> Json {
 }
 
 pub type Response {
-  RegisterResp(description: DeviceDescription)
+  RegisterResp(device_description: DeviceDescription)
   StatusCheckResp
   ExecuteActionResp(error: String)
 }
 
 pub fn actor() -> Result(
-  actor.Started(Subject(timer_actor.TimePassed(Message))),
+  actor.Started(Subject(PresenceSensorMessage)),
   actor.StartError,
 ) {
   actor.new_with_initialiser(50, fn(self) {
-    let assert Ok(loop_timer) = timer_actor.timer_actor(self)
-    actor.send(loop_timer.data, timer_actor.start(50))
     let assert Ok(detect_presence_timer) = timer_actor.timer_actor(self)
     actor.send(detect_presence_timer.data, timer_actor.start(5000))
 
@@ -137,10 +144,8 @@ pub fn actor() -> Result(
       "ps-1",
       "presence-sensor-1",
       PresenceNotDetected,
-      loop_timer.data,
       detect_presence_timer.data,
       option.None,
-      PresenceNotDetected,
     )
     |> actor.initialised()
     |> actor.returning(self)
@@ -152,22 +157,23 @@ pub fn actor() -> Result(
 
 fn handle_message(
   ps: PresenceSensor,
-  msg: timer_actor.TimePassed(Message),
-) -> actor.Next(PresenceSensor, timer_actor.TimePassed(Message)) {
+  msg: PresenceSensorMessage,
+) -> actor.Next(PresenceSensor, PresenceSensorMessage) {
   case msg {
-    timer_actor.TimePassed(sender: timer, ..) if timer == ps.loop_timer ->
-      case int.random(5) {
-        0 -> PresenceSensor(..ps, state: PresenceDetected)
-        _ -> PresenceSensor(..ps, state: PresenceNotDetected)
+    timer_actor.TimePassed(..) -> {
+      let new_state = case int.random(4) {
+        0 -> PresenceDetected
+        _ -> PresenceNotDetected
       }
-    timer_actor.TimePassed(..) ->
-      case ps.server_addr, ps.prev_state {
-        Some(ServerAddress(host:, port:)), prev_s if prev_s != ps.state -> {
-          send_state(ps, host, port)
-          ps
+      case ps.server_addr {
+        Some(ServerAddress(host:, port:)) if new_state != ps.state -> {
+          let new_ps = PresenceSensor(..ps, state: new_state)
+          send_state(new_ps, host, port)
+          new_ps
         }
-        _, _ -> ps
+        _ -> ps
       }
+    }
     timer_actor.Other(value) ->
       case value {
         ExecuteAction(sender:, action_id: _) -> {
@@ -183,8 +189,8 @@ fn handle_message(
             sender,
             RegisterResp(
               DeviceDescription(
-                "presence-sensor",
-                "Presence sensor",
+                ps.id,
+                ps.name,
                 [
                   DevicePropertyDescription(
                     "presence-detected",
@@ -215,7 +221,7 @@ fn send_state(ps: PresenceSensor, host: String, port: Int) -> Nil {
         <> int.to_string(port)
         <> "/api/devices/"
         <> ps.id
-        <> "/property/presence-detected",
+        <> "/properties/presence-detected",
       )
 
     let value =
@@ -225,8 +231,9 @@ fn send_state(ps: PresenceSensor, host: String, port: Int) -> Nil {
 
     let response =
       req
+      |> request.set_method(Patch)
       |> request.prepend_header("Content-Type", "application/json")
-      |> request.set_body("{value: " <> value <> "}")
+      |> request.set_body("{\"value\": " <> value <> "}")
       |> httpc.send()
 
     case response {
