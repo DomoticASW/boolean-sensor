@@ -35,7 +35,7 @@ fn register(req: Request, ps: Subject(PresenceSensorMessage)) -> Response {
 
 // ****** ENCODING TO JSON FUNCTIONS ******
 
-pub fn encode_device_description(d: DeviceDescription) -> Json {
+fn encode_device_description(d: DeviceDescription) -> Json {
   json.object([
     #("id", json.string(d.id)),
     #("name", json.string(d.name)),
@@ -48,7 +48,7 @@ pub fn encode_device_description(d: DeviceDescription) -> Json {
   ])
 }
 
-pub fn encode_device_property_description(d: DevicePropertyDescription) -> Json {
+fn encode_device_property_description(d: DevicePropertyDescription) -> Json {
   json.object([
     #("id", json.string(d.id)),
     #("name", json.string(d.name)),
@@ -60,9 +60,7 @@ pub fn encode_device_property_description(d: DevicePropertyDescription) -> Json 
   ])
 }
 
-pub fn encode_type_constraints_description(
-  tc: TypeConstraintsDescription,
-) -> Json {
+fn encode_type_constraints_description(tc: TypeConstraintsDescription) -> Json {
   case tc {
     presence_sensor.None(type_:) ->
       json.object([
@@ -72,7 +70,7 @@ pub fn encode_type_constraints_description(
   }
 }
 
-pub fn encode_types(type_: Types) -> Json {
+fn encode_types(type_: Types) -> Json {
   case type_ {
     BoolType -> json.string("Boolean")
   }
