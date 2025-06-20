@@ -1,12 +1,12 @@
 import gleam/erlang/process.{type Subject}
-import gleam/http.{Post}
+import gleam/http.{Get, Post}
 import gleam/json.{type Json}
 import gleam/otp/actor
 import middleware
 import presence_sensor.{
   type DeviceDescription, type DevicePropertyDescription,
   type PresenceSensorMessage, type TypeConstraintsDescription, type Types,
-  BoolType, RegisterResp, ServerAddress,
+  BoolType, RegisterResp, ServerAddress, StatusCheckResp,
 }
 import wisp.{type Request, type Response}
 
@@ -17,6 +17,7 @@ pub fn handle_request(
   use req <- middleware.basic(req)
   case wisp.path_segments(req) {
     ["register"] -> register(req, ps)
+    ["check-status"] -> check_status(req, ps)
     _ -> wisp.not_found()
   }
 }
@@ -31,6 +32,13 @@ fn register(req: Request, ps: Subject(PresenceSensorMessage)) -> Response {
   encode_device_description(device_description)
   |> json.to_string_tree()
   |> wisp.json_response(200)
+}
+
+fn check_status(req: Request, ps: Subject(PresenceSensorMessage)) -> Response {
+  use <- wisp.require_method(req, Get)
+  let assert StatusCheckResp =
+    actor.call(ps, 5000, presence_sensor.status_check_msg)
+  wisp.response(200)
 }
 
 // ****** ENCODING TO JSON FUNCTIONS ******

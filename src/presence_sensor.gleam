@@ -49,6 +49,10 @@ pub fn register_msg(
   timer_actor.Other(Register(sender:, server_addr:))
 }
 
+pub fn status_check_msg(sender: Subject(Response)) -> PresenceSensorMessage {
+  timer_actor.Other(StatusCheck(sender:))
+}
+
 pub type PresenceSensorMessage =
   timer_actor.TimePassed(Message)
 
