@@ -3,11 +3,11 @@ import gleam/http.{Get, Post}
 import gleam/json.{type Json}
 import gleam/otp/actor
 import middleware
-import presence_sensor.{
+import presence_sensor_actor.{
   type DeviceDescription, type DevicePropertyDescription,
   type PresenceSensorMessage, type TypeConstraintsDescription, type Types,
   BoolType, RegisterResp, ServerAddress, StatusCheckResp,
-}
+} as ps_actor
 import wisp.{type Request, type Response}
 
 pub fn handle_request(
@@ -25,7 +25,7 @@ pub fn handle_request(
 fn register(req: Request, ps: Subject(PresenceSensorMessage)) -> Response {
   use <- wisp.require_method(req, Post)
   let assert RegisterResp(device_description:) =
-    actor.call(ps, 5000, presence_sensor.register_msg(
+    actor.call(ps, 5000, ps_actor.register_msg(
       _,
       ServerAddress("localhost", 3000),
     ))
@@ -36,8 +36,7 @@ fn register(req: Request, ps: Subject(PresenceSensorMessage)) -> Response {
 
 fn check_status(req: Request, ps: Subject(PresenceSensorMessage)) -> Response {
   use <- wisp.require_method(req, Get)
-  let assert StatusCheckResp =
-    actor.call(ps, 5000, presence_sensor.status_check_msg)
+  let assert StatusCheckResp = actor.call(ps, 5000, ps_actor.status_check_msg)
   wisp.response(200)
 }
 
@@ -70,7 +69,7 @@ fn encode_device_property_description(d: DevicePropertyDescription) -> Json {
 
 fn encode_type_constraints_description(tc: TypeConstraintsDescription) -> Json {
   case tc {
-    presence_sensor.None(type_:) ->
+    ps_actor.None(type_:) ->
       json.object([
         #("constraint", json.string("None")),
         #("type", encode_types(type_)),
