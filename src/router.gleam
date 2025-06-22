@@ -2,7 +2,7 @@ import boolean_sensor_actor.{
   type BooleanSensorMessage, type DeviceDescription,
   type DevicePropertyDescription, type TypeConstraintsDescription, type Types,
   BoolType, RegisterResp, ServerAddress, StatusCheckResp,
-} as ps_actor
+} as bs_actor
 import gleam/erlang/process.{type Subject}
 import gleam/http.{Get, Post}
 import gleam/json.{type Json}
@@ -12,20 +12,21 @@ import wisp.{type Request, type Response}
 
 pub fn handle_request(
   req: Request,
-  ps: Subject(BooleanSensorMessage),
+  bs: Subject(BooleanSensorMessage),
 ) -> Response {
   use req <- middleware.basic(req)
   case wisp.path_segments(req) {
-    ["register"] -> register(req, ps)
-    ["check-status"] -> check_status(req, ps)
+    ["register"] -> register(req, bs)
+    ["check-status"] -> check_status(req, bs)
     _ -> wisp.not_found()
   }
 }
 
-fn register(req: Request, ps: Subject(BooleanSensorMessage)) -> Response {
+fn register(req: Request, bs: Subject(BooleanSensorMessage)) -> Response {
   use <- wisp.require_method(req, Post)
+  // TODO: parse request body
   let assert RegisterResp(device_description:) =
-    actor.call(ps, 5000, ps_actor.register_msg(
+    actor.call(bs, 5000, bs_actor.register_msg(
       _,
       ServerAddress("localhost", 3000),
     ))
@@ -34,9 +35,9 @@ fn register(req: Request, ps: Subject(BooleanSensorMessage)) -> Response {
   |> wisp.json_response(200)
 }
 
-fn check_status(req: Request, ps: Subject(BooleanSensorMessage)) -> Response {
+fn check_status(req: Request, bs: Subject(BooleanSensorMessage)) -> Response {
   use <- wisp.require_method(req, Get)
-  let assert StatusCheckResp = actor.call(ps, 5000, ps_actor.status_check_msg)
+  let assert StatusCheckResp = actor.call(bs, 5000, bs_actor.status_check_msg)
   wisp.response(200)
 }
 
@@ -69,7 +70,7 @@ fn encode_device_property_description(d: DevicePropertyDescription) -> Json {
 
 fn encode_type_constraints_description(tc: TypeConstraintsDescription) -> Json {
   case tc {
-    ps_actor.None(type_:) ->
+    bs_actor.None(type_:) ->
       json.object([
         #("constraint", json.string("None")),
         #("type", encode_types(type_)),

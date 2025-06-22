@@ -6,7 +6,7 @@ import gleam/http/response
 import gleam/httpc.{FailedToConnect, InvalidUtf8Response}
 import gleam/int
 import gleam/io
-import gleam/option.{Some}
+import gleam/option.{type Option, Some}
 import gleam/otp/actor
 import gleam/string
 import timer_actor
@@ -15,29 +15,41 @@ pub type BooleanSensor {
   BooleanSensor(
     id: String,
     name: String,
+    target_condition: Condition,
+    condition_probability: Probability,
+    condition_test_period_ms: Int,
+    server_address: option.Option(ServerAddress),
     state: State,
-    detect_boolean_timer: Subject(timer_actor.Message),
-    server_addr: option.Option(ServerAddress),
+    timer: Subject(timer_actor.Message),
   )
 }
 
-pub fn boolean_detected(p: BooleanSensor) -> Bool {
-  case p.state {
-    BooleanDetected -> True
-    BooleanNotDetected -> False
+pub type Condition =
+  String
+
+type State =
+  Bool
+
+pub opaque type Probability {
+  Probability(p: Int)
+}
+
+pub fn new_probability(p: Int) -> Result(Probability, Nil) {
+  case p >= 0 && p <= 100 {
+    True -> Ok(Probability(p:))
+    False -> Error(Nil)
   }
 }
 
-pub type State {
-  BooleanDetected
-  BooleanNotDetected
-}
-
-fn state_to_event(s: State) -> String {
+fn state_to_event(s: State, target_condition: Condition) -> String {
   case s {
-    BooleanDetected -> "boolean_detected"
-    BooleanNotDetected -> "boolean_not_detected"
+    True -> target_condition <> "-detected"
+    False -> target_condition <> "-not-detected"
   }
+}
+
+fn property_id(s: BooleanSensor) -> String {
+  s.target_condition |> string.lowercase() <> "-detected"
 }
 
 pub type ServerAddress {
@@ -45,16 +57,16 @@ pub type ServerAddress {
 }
 
 pub type Message {
-  Register(sender: Subject(Response), server_addr: ServerAddress)
+  Register(sender: Subject(Response), server_address: ServerAddress)
   StatusCheck(sender: Subject(Response))
   ExecuteAction(sender: Subject(Response), action_id: String)
 }
 
 pub fn register_msg(
   sender: Subject(Response),
-  server_addr: ServerAddress,
+  server_address: ServerAddress,
 ) -> BooleanSensorMessage {
-  timer_actor.Other(Register(sender:, server_addr:))
+  timer_actor.Other(Register(sender:, server_address:))
 }
 
 pub fn status_check_msg(sender: Subject(Response)) -> BooleanSensorMessage {
@@ -100,90 +112,95 @@ pub type Response {
   ExecuteActionResp(error: String)
 }
 
-pub fn actor() -> Result(
-  actor.Started(Subject(BooleanSensorMessage)),
-  actor.StartError,
-) {
+pub fn actor(
+  id id: String,
+  name name: String,
+  target_condition target_condition: String,
+  condition_probability condition_probability: Probability,
+  condition_test_period_ms condition_test_period_ms: Int,
+  server_address server_address: Option(ServerAddress),
+) -> Result(actor.Started(Subject(BooleanSensorMessage)), actor.StartError) {
   actor.new_with_initialiser(50, fn(self) {
-    let assert Ok(detect_boolean_timer) = timer_actor.timer_actor(self)
-    actor.send(detect_boolean_timer.data, timer_actor.start(5000))
+    let assert Ok(timer) = timer_actor.timer_actor(self)
+    actor.send(timer.data, timer_actor.start(5000))
 
     BooleanSensor(
-      "ps-1",
-      "boolean-sensor-1",
-      BooleanNotDetected,
-      detect_boolean_timer.data,
-      option.None,
+      id:,
+      name:,
+      target_condition:,
+      condition_probability:,
+      condition_test_period_ms:,
+      timer: timer.data,
+      state: False,
+      server_address:,
     )
     |> actor.initialised()
     |> actor.returning(self)
     |> Ok
+    |> io.debug
   })
   |> actor.on_message(handle_message)
   |> actor.start
 }
 
 fn handle_message(
-  ps: BooleanSensor,
+  s: BooleanSensor,
   msg: BooleanSensorMessage,
 ) -> actor.Next(BooleanSensor, BooleanSensorMessage) {
   case msg {
     timer_actor.TimePassed(..) -> {
-      let new_state = case int.random(4) {
-        0 -> BooleanDetected
-        _ -> BooleanNotDetected
-      }
-      case ps.server_addr {
-        Some(server_address) if new_state != ps.state -> {
-          let new_ps = BooleanSensor(..ps, state: new_state)
-          send_state(new_ps, server_address)
-          send_event(new_ps, new_ps.state, server_address)
-          new_ps
+      let new_state = int.random(101) <= s.condition_probability.p
+      case s.server_address {
+        Some(server_address) if new_state != s.state -> {
+          let new_s = BooleanSensor(..s, state: new_state)
+          send_state(new_s, server_address)
+          send_event(new_s, new_s.state, server_address)
+          new_s
         }
-        _ -> ps
+        _ -> s
       }
     }
     timer_actor.Other(value) ->
       case value {
         ExecuteAction(sender:, action_id: _) -> {
           actor.send(sender, ExecuteActionResp("Action not found"))
-          ps
+          s
         }
         StatusCheck(sender:) -> {
           actor.send(sender, StatusCheckResp)
-          ps
+          s
         }
-        Register(sender:, server_addr:) -> {
+        Register(sender:, server_address:) -> {
           actor.send(
             sender,
             RegisterResp(
               DeviceDescription(
-                ps.id,
-                ps.name,
+                s.id,
+                s.name,
                 [
                   DevicePropertyDescription(
-                    "boolean-detected",
-                    "Boolean detected",
-                    boolean_detected(ps),
+                    property_id(s),
+                    s.target_condition <> " detected",
+                    s.state,
                     None(BoolType),
                   ),
                 ],
                 [],
                 [
-                  state_to_event(BooleanDetected),
-                  state_to_event(BooleanNotDetected),
+                  state_to_event(True, s.target_condition),
+                  state_to_event(False, s.target_condition),
                 ],
               ),
             ),
           )
-          BooleanSensor(..ps, server_addr: Some(server_addr))
+          BooleanSensor(..s, server_address: Some(server_address))
         }
       }
   }
   |> actor.continue
 }
 
-fn send_state(ps: BooleanSensor, server_address: ServerAddress) -> Nil {
+fn send_state(s: BooleanSensor, server_address: ServerAddress) -> Nil {
   process.spawn_unlinked(fn() {
     let assert Ok(req) =
       request.to(
@@ -192,12 +209,13 @@ fn send_state(ps: BooleanSensor, server_address: ServerAddress) -> Nil {
         <> ":"
         <> int.to_string(server_address.port)
         <> "/api/devices/"
-        <> ps.id
-        <> "/properties/boolean-detected",
+        <> s.id
+        <> "/properties/"
+        <> property_id(s),
       )
 
     let value =
-      boolean_detected(ps)
+      s.state
       |> bool.to_string
       |> string.lowercase
 
@@ -212,7 +230,7 @@ fn send_state(ps: BooleanSensor, server_address: ServerAddress) -> Nil {
 }
 
 fn send_event(
-  ps: BooleanSensor,
+  s: BooleanSensor,
   event: State,
   server_address: ServerAddress,
 ) -> Nil {
@@ -224,14 +242,16 @@ fn send_event(
         <> ":"
         <> int.to_string(server_address.port)
         <> "/api/devices/"
-        <> ps.id
+        <> s.id
         <> "/events",
       )
 
     req
     |> request.set_method(Post)
     |> request.prepend_header("Content-Type", "application/json")
-    |> request.set_body("{\"event\": \"" <> state_to_event(event) <> "\"}")
+    |> request.set_body(
+      "{\"event\": \"" <> state_to_event(event, s.target_condition) <> "\"}",
+    )
     |> httpc.send()
     |> log_failed_request()
   })
