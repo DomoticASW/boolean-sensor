@@ -1,7 +1,8 @@
 import gleam/bool
 import gleam/erlang/process.{type Subject}
-import gleam/http.{Patch}
+import gleam/http.{Patch, Post}
 import gleam/http/request
+import gleam/http/response
 import gleam/httpc.{FailedToConnect, InvalidUtf8Response}
 import gleam/int
 import gleam/io
@@ -30,6 +31,13 @@ pub fn presence_detected(p: PresenceSensor) -> Bool {
 pub type State {
   PresenceDetected
   PresenceNotDetected
+}
+
+fn state_to_event(s: State) -> String {
+  case s {
+    PresenceDetected -> "presence_detected"
+    PresenceNotDetected -> "presence_not_detected"
+  }
 }
 
 pub type ServerAddress {
@@ -126,9 +134,10 @@ fn handle_message(
         _ -> PresenceNotDetected
       }
       case ps.server_addr {
-        Some(ServerAddress(host:, port:)) if new_state != ps.state -> {
+        Some(server_address) if new_state != ps.state -> {
           let new_ps = PresenceSensor(..ps, state: new_state)
-          send_state(new_ps, host, port)
+          send_state(new_ps, server_address)
+          send_event(new_ps, new_ps.state, server_address)
           new_ps
         }
         _ -> ps
@@ -160,7 +169,10 @@ fn handle_message(
                   ),
                 ],
                 [],
-                ["presence-detected", "presence-not-detected"],
+                [
+                  state_to_event(PresenceDetected),
+                  state_to_event(PresenceNotDetected),
+                ],
               ),
             ),
           )
@@ -171,14 +183,14 @@ fn handle_message(
   |> actor.continue
 }
 
-fn send_state(ps: PresenceSensor, host: String, port: Int) -> Nil {
+fn send_state(ps: PresenceSensor, server_address: ServerAddress) -> Nil {
   process.spawn_unlinked(fn() {
     let assert Ok(req) =
       request.to(
         "http://"
-        <> host
+        <> server_address.host
         <> ":"
-        <> int.to_string(port)
+        <> int.to_string(server_address.port)
         <> "/api/devices/"
         <> ps.id
         <> "/properties/presence-detected",
@@ -189,21 +201,52 @@ fn send_state(ps: PresenceSensor, host: String, port: Int) -> Nil {
       |> bool.to_string
       |> string.lowercase
 
-    let response =
-      req
-      |> request.set_method(Patch)
-      |> request.prepend_header("Content-Type", "application/json")
-      |> request.set_body("{\"value\": " <> value <> "}")
-      |> httpc.send()
-
-    case response {
-      Error(InvalidUtf8Response) -> io.println_error("Invalid UTF8 reponse")
-      Error(FailedToConnect(_, _)) -> io.println_error("Failed to connect")
-      Ok(res) if res.status >= 200 && res.status < 300 -> Nil
-      Ok(res) ->
-        { "Error in response " <> int.to_string(res.status) <> " " <> res.body }
-        |> io.println_error
-    }
+    req
+    |> request.set_method(Patch)
+    |> request.prepend_header("Content-Type", "application/json")
+    |> request.set_body("{\"value\": " <> value <> "}")
+    |> httpc.send()
+    |> log_failed_request()
   })
   Nil
+}
+
+fn send_event(
+  ps: PresenceSensor,
+  event: State,
+  server_address: ServerAddress,
+) -> Nil {
+  process.spawn_unlinked(fn() {
+    let assert Ok(req) =
+      request.to(
+        "http://"
+        <> server_address.host
+        <> ":"
+        <> int.to_string(server_address.port)
+        <> "/api/devices/"
+        <> ps.id
+        <> "/events",
+      )
+
+    req
+    |> request.set_method(Post)
+    |> request.prepend_header("Content-Type", "application/json")
+    |> request.set_body("{\"event\": \"" <> state_to_event(event) <> "\"}")
+    |> httpc.send()
+    |> log_failed_request()
+  })
+  Nil
+}
+
+fn log_failed_request(
+  res: Result(response.Response(String), httpc.HttpError),
+) -> Nil {
+  case res {
+    Error(InvalidUtf8Response) -> io.println_error("Invalid UTF8 reponse")
+    Error(FailedToConnect(_, _)) -> io.println_error("Failed to connect")
+    Ok(res) if res.status >= 200 && res.status < 300 -> Nil
+    Ok(res) ->
+      { "Error in response " <> int.to_string(res.status) <> " " <> res.body }
+      |> io.println_error
+  }
 }
