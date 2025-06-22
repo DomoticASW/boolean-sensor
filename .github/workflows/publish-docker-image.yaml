@@ -4,7 +4,7 @@ on:
     types: [released]
 
 env:
-  DOCKER_REPO: ${{ vars.DOCKERHUB_USERNAME }}/domoticasw-presence-sensor
+  DOCKER_REPO: ${{ vars.DOCKERHUB_USERNAME }}/domoticasw-boolean-sensor
 
 jobs:
   publish-docker-image:
@@ -33,4 +33,4 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ env.DOCKER_REPO }}
-          short-description: A presence sensor simulated device for testing DomoticASW
+          short-description: A boolean sensor simulated device for testing DomoticASW

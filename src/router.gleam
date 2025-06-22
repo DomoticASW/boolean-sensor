@@ -1,18 +1,18 @@
+import boolean_sensor_actor.{
+  type BooleanSensorMessage, type DeviceDescription,
+  type DevicePropertyDescription, type TypeConstraintsDescription, type Types,
+  BoolType, RegisterResp, ServerAddress, StatusCheckResp,
+} as ps_actor
 import gleam/erlang/process.{type Subject}
 import gleam/http.{Get, Post}
 import gleam/json.{type Json}
 import gleam/otp/actor
 import middleware
-import presence_sensor_actor.{
-  type DeviceDescription, type DevicePropertyDescription,
-  type PresenceSensorMessage, type TypeConstraintsDescription, type Types,
-  BoolType, RegisterResp, ServerAddress, StatusCheckResp,
-} as ps_actor
 import wisp.{type Request, type Response}
 
 pub fn handle_request(
   req: Request,
-  ps: Subject(PresenceSensorMessage),
+  ps: Subject(BooleanSensorMessage),
 ) -> Response {
   use req <- middleware.basic(req)
   case wisp.path_segments(req) {
@@ -22,7 +22,7 @@ pub fn handle_request(
   }
 }
 
-fn register(req: Request, ps: Subject(PresenceSensorMessage)) -> Response {
+fn register(req: Request, ps: Subject(BooleanSensorMessage)) -> Response {
   use <- wisp.require_method(req, Post)
   let assert RegisterResp(device_description:) =
     actor.call(ps, 5000, ps_actor.register_msg(
@@ -34,7 +34,7 @@ fn register(req: Request, ps: Subject(PresenceSensorMessage)) -> Response {
   |> wisp.json_response(200)
 }
 
-fn check_status(req: Request, ps: Subject(PresenceSensorMessage)) -> Response {
+fn check_status(req: Request, ps: Subject(BooleanSensorMessage)) -> Response {
   use <- wisp.require_method(req, Get)
   let assert StatusCheckResp = actor.call(ps, 5000, ps_actor.status_check_msg)
   wisp.response(200)

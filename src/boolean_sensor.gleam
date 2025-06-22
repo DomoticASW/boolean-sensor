@@ -1,3 +1,4 @@
+import boolean_sensor_actor as ps_actor
 import envoy
 import gleam/erlang/process.{type Subject}
 import gleam/int
@@ -6,7 +7,6 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import mist
-import presence_sensor_actor as ps_actor
 import router
 import wisp
 import wisp/wisp_mist
@@ -67,19 +67,19 @@ fn parse_configuration(
   Ok(Configuration(id:, name:, server_address:, port:))
 }
 
-fn start_presence_sensor_actor() -> Result(
-  Subject(ps_actor.PresenceSensorMessage),
+fn start_boolean_sensor_actor() -> Result(
+  Subject(ps_actor.BooleanSensorMessage),
   String,
 ) {
   ps_actor.actor()
   |> result.map(fn(a) { a.data })
   |> result.map_error(fn(_) {
-    "Something went wrong while starting presence sensor actor"
+    "Something went wrong while starting boolean sensor actor"
   })
 }
 
 fn start_wisp(
-  ps_subj: Subject(ps_actor.PresenceSensorMessage),
+  ps_subj: Subject(ps_actor.BooleanSensorMessage),
   config: Configuration,
 ) -> Result(Nil, String) {
   wisp_mist.handler(router.handle_request(_, ps_subj), wisp.random_string(64))
@@ -96,11 +96,11 @@ pub fn main() -> Nil {
     {
       use config <- result.try(parse_configuration(
         def_id: "ps-1",
-        def_name: "Presence sensor 1",
+        def_name: "Boolean sensor 1",
         def_server_address: None,
         def_port: 8080,
       ))
-      use ps_actor <- result.try(start_presence_sensor_actor())
+      use ps_actor <- result.try(start_boolean_sensor_actor())
       wisp.configure_logger()
       start_wisp(ps_actor, config)
     }

@@ -11,32 +11,32 @@ import gleam/otp/actor
 import gleam/string
 import timer_actor
 
-pub type PresenceSensor {
-  PresenceSensor(
+pub type BooleanSensor {
+  BooleanSensor(
     id: String,
     name: String,
     state: State,
-    detect_presence_timer: Subject(timer_actor.Message),
+    detect_boolean_timer: Subject(timer_actor.Message),
     server_addr: option.Option(ServerAddress),
   )
 }
 
-pub fn presence_detected(p: PresenceSensor) -> Bool {
+pub fn boolean_detected(p: BooleanSensor) -> Bool {
   case p.state {
-    PresenceDetected -> True
-    PresenceNotDetected -> False
+    BooleanDetected -> True
+    BooleanNotDetected -> False
   }
 }
 
 pub type State {
-  PresenceDetected
-  PresenceNotDetected
+  BooleanDetected
+  BooleanNotDetected
 }
 
 fn state_to_event(s: State) -> String {
   case s {
-    PresenceDetected -> "presence_detected"
-    PresenceNotDetected -> "presence_not_detected"
+    BooleanDetected -> "boolean_detected"
+    BooleanNotDetected -> "boolean_not_detected"
   }
 }
 
@@ -53,15 +53,15 @@ pub type Message {
 pub fn register_msg(
   sender: Subject(Response),
   server_addr: ServerAddress,
-) -> PresenceSensorMessage {
+) -> BooleanSensorMessage {
   timer_actor.Other(Register(sender:, server_addr:))
 }
 
-pub fn status_check_msg(sender: Subject(Response)) -> PresenceSensorMessage {
+pub fn status_check_msg(sender: Subject(Response)) -> BooleanSensorMessage {
   timer_actor.Other(StatusCheck(sender:))
 }
 
-pub type PresenceSensorMessage =
+pub type BooleanSensorMessage =
   timer_actor.TimePassed(Message)
 
 pub type Never
@@ -101,18 +101,18 @@ pub type Response {
 }
 
 pub fn actor() -> Result(
-  actor.Started(Subject(PresenceSensorMessage)),
+  actor.Started(Subject(BooleanSensorMessage)),
   actor.StartError,
 ) {
   actor.new_with_initialiser(50, fn(self) {
-    let assert Ok(detect_presence_timer) = timer_actor.timer_actor(self)
-    actor.send(detect_presence_timer.data, timer_actor.start(5000))
+    let assert Ok(detect_boolean_timer) = timer_actor.timer_actor(self)
+    actor.send(detect_boolean_timer.data, timer_actor.start(5000))
 
-    PresenceSensor(
+    BooleanSensor(
       "ps-1",
-      "presence-sensor-1",
-      PresenceNotDetected,
-      detect_presence_timer.data,
+      "boolean-sensor-1",
+      BooleanNotDetected,
+      detect_boolean_timer.data,
       option.None,
     )
     |> actor.initialised()
@@ -124,18 +124,18 @@ pub fn actor() -> Result(
 }
 
 fn handle_message(
-  ps: PresenceSensor,
-  msg: PresenceSensorMessage,
-) -> actor.Next(PresenceSensor, PresenceSensorMessage) {
+  ps: BooleanSensor,
+  msg: BooleanSensorMessage,
+) -> actor.Next(BooleanSensor, BooleanSensorMessage) {
   case msg {
     timer_actor.TimePassed(..) -> {
       let new_state = case int.random(4) {
-        0 -> PresenceDetected
-        _ -> PresenceNotDetected
+        0 -> BooleanDetected
+        _ -> BooleanNotDetected
       }
       case ps.server_addr {
         Some(server_address) if new_state != ps.state -> {
-          let new_ps = PresenceSensor(..ps, state: new_state)
+          let new_ps = BooleanSensor(..ps, state: new_state)
           send_state(new_ps, server_address)
           send_event(new_ps, new_ps.state, server_address)
           new_ps
@@ -162,28 +162,28 @@ fn handle_message(
                 ps.name,
                 [
                   DevicePropertyDescription(
-                    "presence-detected",
-                    "Presence detected",
-                    presence_detected(ps),
+                    "boolean-detected",
+                    "Boolean detected",
+                    boolean_detected(ps),
                     None(BoolType),
                   ),
                 ],
                 [],
                 [
-                  state_to_event(PresenceDetected),
-                  state_to_event(PresenceNotDetected),
+                  state_to_event(BooleanDetected),
+                  state_to_event(BooleanNotDetected),
                 ],
               ),
             ),
           )
-          PresenceSensor(..ps, server_addr: Some(server_addr))
+          BooleanSensor(..ps, server_addr: Some(server_addr))
         }
       }
   }
   |> actor.continue
 }
 
-fn send_state(ps: PresenceSensor, server_address: ServerAddress) -> Nil {
+fn send_state(ps: BooleanSensor, server_address: ServerAddress) -> Nil {
   process.spawn_unlinked(fn() {
     let assert Ok(req) =
       request.to(
@@ -193,11 +193,11 @@ fn send_state(ps: PresenceSensor, server_address: ServerAddress) -> Nil {
         <> int.to_string(server_address.port)
         <> "/api/devices/"
         <> ps.id
-        <> "/properties/presence-detected",
+        <> "/properties/boolean-detected",
       )
 
     let value =
-      presence_detected(ps)
+      boolean_detected(ps)
       |> bool.to_string
       |> string.lowercase
 
@@ -212,7 +212,7 @@ fn send_state(ps: PresenceSensor, server_address: ServerAddress) -> Nil {
 }
 
 fn send_event(
-  ps: PresenceSensor,
+  ps: BooleanSensor,
   event: State,
   server_address: ServerAddress,
 ) -> Nil {
