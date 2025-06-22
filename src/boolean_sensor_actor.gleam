@@ -43,8 +43,8 @@ pub fn new_probability(p: Int) -> Result(Probability, Nil) {
 
 fn state_to_event(s: State, target_condition: Condition) -> String {
   case s {
-    True -> target_condition <> "-detected"
-    False -> target_condition <> "-not-detected"
+    True -> target_condition <> " detected"
+    False -> target_condition <> " not detected"
   }
 }
 

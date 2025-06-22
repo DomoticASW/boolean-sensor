@@ -10,7 +10,7 @@ docker run ventus218/domoticasw-boolean-sensor
 
 The following configurations can be passed to the container as environment variables.
 
-For example `docker run -e TARGET="Rain" ventus218/domoticasw-boolean-sensor`
+For example `docker run -e TARGET_CONDITION="Rain" ventus218/domoticasw-boolean-sensor`
 
 | Variable name            | Default value              | Explanation                                           | Admissible values               |
 | ------------------------ | -------------------------- | ----------------------------------------------------- | ------------------------------- |
