@@ -137,7 +137,6 @@ pub fn actor(
     |> actor.initialised()
     |> actor.returning(self)
     |> Ok
-    |> io.debug
   })
   |> actor.on_message(handle_message)
   |> actor.start
