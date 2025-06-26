@@ -24,11 +24,12 @@ pub fn handle_request(
 
 fn register(req: Request, bs: Subject(BooleanSensorMessage)) -> Response {
   use <- wisp.require_method(req, Post)
-  // TODO: parse request body
+  let host = req.host
+  // TODO: parse request port
   let assert RegisterResp(device_description:) =
     actor.call(bs, 5000, bs_actor.register_msg(
       _,
-      ServerAddress("localhost", 3000),
+      ServerAddress(host:, port: 3000),
     ))
   encode_device_description(device_description)
   |> json.to_string_tree()
