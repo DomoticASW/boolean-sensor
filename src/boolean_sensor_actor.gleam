@@ -1,4 +1,5 @@
 import gleam/bool
+import gleam/bytes_tree
 import gleam/erlang/process.{type Subject}
 import gleam/http.{Patch, Post}
 import gleam/http/request
@@ -6,10 +7,12 @@ import gleam/http/response
 import gleam/httpc.{FailedToConnect, InvalidUtf8Response}
 import gleam/int
 import gleam/io
+import gleam/json
 import gleam/option.{type Option, Some}
 import gleam/otp/actor
 import gleam/string
 import timer_actor
+import udp
 
 pub type BooleanSensor {
   BooleanSensor(
@@ -19,8 +22,10 @@ pub type BooleanSensor {
     condition_probability: Probability,
     condition_test_period_ms: Int,
     server_address: option.Option(ServerAddress),
+    socket: option.Option(udp.Socket),
     state: State,
-    timer: Subject(timer_actor.Message),
+    timer_check_condition: Subject(timer_actor.Message),
+    timer_announce: Subject(timer_actor.Message),
   )
 }
 
@@ -121,8 +126,11 @@ pub fn actor(
   server_address server_address: Option(ServerAddress),
 ) -> Result(actor.Started(Subject(BooleanSensorMessage)), actor.StartError) {
   actor.new_with_initialiser(50, fn(self) {
-    let assert Ok(timer) = timer_actor.timer_actor(self)
-    actor.send(timer.data, timer_actor.start(5000))
+    let assert Ok(timer_check_condition) = timer_actor.timer_actor(self)
+    actor.send(timer_check_condition.data, timer_actor.start(5000))
+
+    let assert Ok(timer_announce) = timer_actor.timer_actor(self)
+    actor.send(timer_announce.data, timer_actor.start(1000))
 
     BooleanSensor(
       id:,
@@ -130,9 +138,11 @@ pub fn actor(
       target_condition:,
       condition_probability:,
       condition_test_period_ms:,
-      timer: timer.data,
+      timer_check_condition: timer_check_condition.data,
+      timer_announce: timer_announce.data,
       state: False,
       server_address:,
+      socket: option.None,
     )
     |> actor.initialised()
     |> actor.returning(self)
@@ -147,7 +157,7 @@ fn handle_message(
   msg: BooleanSensorMessage,
 ) -> actor.Next(BooleanSensor, BooleanSensorMessage) {
   case msg {
-    timer_actor.TimePassed(..) -> {
+    timer_actor.TimePassed(sender:, ..) if sender == s.timer_check_condition -> {
       let new_state = int.random(101) <= s.condition_probability.p
       case s.server_address {
         Some(server_address) if new_state != s.state -> {
@@ -157,6 +167,24 @@ fn handle_message(
           new_s
         }
         _ -> s
+      }
+    }
+    timer_actor.TimePassed(..) -> {
+      case s.server_address, s.socket {
+        option.None, option.None -> {
+          let assert Ok(socket) = udp.open(0, [])
+          send_udp_announce(socket, #(255, 255, 255, 255), 30_000, s)
+          BooleanSensor(..s, socket: Some(socket))
+        }
+        option.None, Some(socket) -> {
+          send_udp_announce(socket, #(255, 255, 255, 255), 30_000, s)
+          s
+        }
+        Some(_), Some(socket) -> {
+          udp.close(socket)
+          s
+        }
+        Some(_), option.None -> s
       }
     }
     timer_actor.Other(value) ->
@@ -255,6 +283,27 @@ fn send_event(
     |> log_failed_request()
   })
   Nil
+}
+
+fn send_udp_announce(
+  socket: udp.Socket,
+  addr: udp.Address,
+  port: Int,
+  s: BooleanSensor,
+) -> Nil {
+  case
+    json.object([
+      #("id", json.string(s.id)),
+      #("name", json.string(s.name)),
+      #("port", json.int(8080)),
+    ])
+    |> json.to_string_tree
+    |> bytes_tree.from_string_tree
+    |> udp.send(socket, addr, port, _)
+  {
+    Error(_) -> io.println_error("Something went wrong sending udp announce")
+    Ok(_) -> Nil
+  }
 }
 
 fn log_failed_request(
