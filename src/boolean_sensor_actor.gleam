@@ -10,6 +10,7 @@ import gleam/io
 import gleam/json
 import gleam/option.{type Option, Some}
 import gleam/otp/actor
+import gleam/result
 import gleam/string
 import timer_actor
 import udp
@@ -22,6 +23,8 @@ pub type BooleanSensor {
     condition_probability: Probability,
     condition_test_period_ms: Int,
     server_address: option.Option(ServerAddress),
+    discovery_broadcast_addr: String,
+    server_discovery_port: Int,
     socket: option.Option(udp.Socket),
     state: State,
     timer_check_condition: Subject(timer_actor.Message),
@@ -124,6 +127,8 @@ pub fn actor(
   condition_probability condition_probability: Probability,
   condition_test_period_ms condition_test_period_ms: Int,
   server_address server_address: Option(ServerAddress),
+  discovery_broadcast_addr discovery_broadcast_addr: String,
+  server_discovery_port server_discovery_port: Int,
 ) -> Result(actor.Started(Subject(BooleanSensorMessage)), actor.StartError) {
   actor.new_with_initialiser(50, fn(self) {
     let assert Ok(timer_check_condition) = timer_actor.timer_actor(self)
@@ -138,6 +143,8 @@ pub fn actor(
       target_condition:,
       condition_probability:,
       condition_test_period_ms:,
+      discovery_broadcast_addr:,
+      server_discovery_port:,
       timer_check_condition: timer_check_condition.data,
       timer_announce: timer_announce.data,
       state: False,
@@ -173,11 +180,21 @@ fn handle_message(
       case s.server_address, s.socket {
         option.None, option.None -> {
           let assert Ok(socket) = udp.open(0, [])
-          send_udp_announce(socket, #(255, 255, 255, 255), 30_000, s)
+          send_udp_announce(
+            socket,
+            s.discovery_broadcast_addr,
+            s.server_discovery_port,
+            s,
+          )
           BooleanSensor(..s, socket: Some(socket))
         }
         option.None, Some(socket) -> {
-          send_udp_announce(socket, #(255, 255, 255, 255), 30_000, s)
+          send_udp_announce(
+            socket,
+            s.discovery_broadcast_addr,
+            s.server_discovery_port,
+            s,
+          )
           s
         }
         Some(_), Some(socket) -> {
@@ -285,24 +302,44 @@ fn send_event(
   Nil
 }
 
+fn address_from_string(s: String) -> Result(udp.Address, Nil) {
+  use address_bytes_str <- result.try({
+    case s |> string.split(".") {
+      [a, b, c, d] -> Ok(#(a, b, c, d))
+      _ -> Error(Nil)
+    }
+  })
+  use a <- result.try(int.parse(address_bytes_str.0))
+  use b <- result.try(int.parse(address_bytes_str.1))
+  use c <- result.try(int.parse(address_bytes_str.2))
+  use d <- result.try(int.parse(address_bytes_str.3))
+  Ok(#(a, b, c, d))
+}
+
 fn send_udp_announce(
   socket: udp.Socket,
-  addr: udp.Address,
+  addr: String,
   port: Int,
   s: BooleanSensor,
 ) -> Nil {
-  case
-    json.object([
-      #("id", json.string(s.id)),
-      #("name", json.string(s.name)),
-      #("port", json.int(8080)),
-    ])
-    |> json.to_string_tree
-    |> bytes_tree.from_string_tree
-    |> udp.send(socket, addr, port, _)
-  {
-    Error(_) -> io.println_error("Something went wrong sending udp announce")
-    Ok(_) -> Nil
+  case address_from_string(addr) {
+    Error(_) ->
+      io.println_error("Given broadcast address is not a valid IPv4 address")
+    Ok(address) ->
+      case
+        json.object([
+          #("id", json.string(s.id)),
+          #("name", json.string(s.name)),
+          #("port", json.int(8080)),
+        ])
+        |> json.to_string_tree
+        |> bytes_tree.from_string_tree
+        |> udp.send(socket, address, port, _)
+      {
+        Error(_) ->
+          io.println_error("Something went wrong sending udp announce")
+        Ok(_) -> Nil
+      }
   }
 }
 

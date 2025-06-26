@@ -22,6 +22,8 @@ type Configuration {
     condition_test_period_ms: Int,
     server_address: Option(ServerAddress),
     port: Int,
+    discovery_broadcast_addr: String,
+    server_discovery_port: Int,
   )
 }
 
@@ -81,6 +83,18 @@ fn parse_server_address(
   }
 }
 
+fn parse_server_discovery_port() -> Result(Int, String) {
+  let env_var = "SERVER_DISCOVERY_PORT"
+  envoy.get(env_var)
+  |> result.map_error(fn(_) {
+    "Missing value for required env var: " <> env_var
+  })
+  |> result.try(fn(s) {
+    int.parse(s)
+    |> result.map_error(fn(_) { "Given port " <> s <> " is not valid" })
+  })
+}
+
 fn parse_configuration(
   def_id id: String,
   def_target_condition target_condition: Condition,
@@ -88,11 +102,15 @@ fn parse_configuration(
   def_condition_test_period_ms condition_test_period_ms: Int,
   def_server_address server_address: Option(ServerAddress),
   def_port port: Int,
+  def_discovery_broadcast_addr def_discovery_broadcast_addr: String,
 ) -> Result(Configuration, String) {
   let id = envoy.get("ID") |> result.unwrap(id)
   let target_condition =
     envoy.get("TARGET_CONDITION") |> result.unwrap(target_condition)
   let name = envoy.get("NAME") |> result.unwrap(target_condition <> " sensor")
+  let discovery_broadcast_addr =
+    envoy.get("DISCOVERY_BROADCAST_ADDR")
+    |> result.unwrap(def_discovery_broadcast_addr)
   use condition_probability <- result.try(parse_condition_probability(
     default: condition_probability,
   ))
@@ -101,6 +119,7 @@ fn parse_configuration(
   ))
   use server_address <- result.try(parse_server_address(default: server_address))
   use port <- result.try(parse_port(default: port))
+  use server_discovery_port <- result.try(parse_server_discovery_port())
   Ok(Configuration(
     id:,
     name:,
@@ -109,6 +128,8 @@ fn parse_configuration(
     condition_test_period_ms:,
     server_address:,
     port:,
+    discovery_broadcast_addr:,
+    server_discovery_port:,
   ))
 }
 
@@ -122,6 +143,8 @@ fn start_boolean_sensor_actor(
     condition_probability: config.condition_probability,
     condition_test_period_ms: config.condition_test_period_ms,
     server_address: config.server_address,
+    server_discovery_port: config.server_discovery_port,
+    discovery_broadcast_addr: config.discovery_broadcast_addr,
   )
   |> result.map(fn(a) { a.data })
   |> result.map_error(fn(_) {
@@ -155,6 +178,7 @@ pub fn main() -> Nil {
         def_condition_test_period_ms: 5000,
         def_server_address: None,
         def_port: 8080,
+        def_discovery_broadcast_addr: "255.255.255.255",
       ))
       use bs_actor <- result.try(start_boolean_sensor_actor(config))
       wisp.configure_logger()
