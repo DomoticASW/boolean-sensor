@@ -143,6 +143,7 @@ fn start_boolean_sensor_actor(
     condition_probability: config.condition_probability,
     condition_test_period_ms: config.condition_test_period_ms,
     server_address: config.server_address,
+    device_port: config.port,
     server_discovery_port: config.server_discovery_port,
     discovery_broadcast_addr: config.discovery_broadcast_addr,
   )

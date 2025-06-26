@@ -27,6 +27,7 @@ pub type BooleanSensor {
     server_discovery_port: Int,
     socket: option.Option(udp.Socket),
     state: State,
+    device_port: Int,
     timer_check_condition: Subject(timer_actor.Message),
     timer_announce: Subject(timer_actor.Message),
   )
@@ -127,6 +128,7 @@ pub fn actor(
   condition_probability condition_probability: Probability,
   condition_test_period_ms condition_test_period_ms: Int,
   server_address server_address: Option(ServerAddress),
+  device_port device_port: Int,
   discovery_broadcast_addr discovery_broadcast_addr: String,
   server_discovery_port server_discovery_port: Int,
 ) -> Result(actor.Started(Subject(BooleanSensorMessage)), actor.StartError) {
@@ -145,6 +147,7 @@ pub fn actor(
       condition_test_period_ms:,
       discovery_broadcast_addr:,
       server_discovery_port:,
+      device_port:,
       timer_check_condition: timer_check_condition.data,
       timer_announce: timer_announce.data,
       state: False,
@@ -330,7 +333,7 @@ fn send_udp_announce(
         json.object([
           #("id", json.string(s.id)),
           #("name", json.string(s.name)),
-          #("port", json.int(8080)),
+          #("port", json.int(s.device_port)),
         ])
         |> json.to_string_tree
         |> bytes_tree.from_string_tree
