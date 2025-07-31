@@ -118,7 +118,7 @@ pub type TypeConstraintsDescription {
 pub type Response {
   RegisterResp(device_description: DeviceDescription)
   StatusCheckResp
-  ExecuteActionResp(error: String)
+  ExecuteActionResp(cause: String)
 }
 
 pub fn actor(
