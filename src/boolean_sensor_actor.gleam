@@ -182,7 +182,7 @@ fn handle_message(
     timer_actor.TimePassed(..) -> {
       case s.server_address, s.socket {
         option.None, option.None -> {
-          let assert Ok(socket) = udp.open(0, [])
+          let assert Ok(socket) = udp.open(0, [udp.Broadcast(True)])
           send_udp_announce(
             socket,
             s.discovery_broadcast_addr,
@@ -339,8 +339,8 @@ fn send_udp_announce(
         |> bytes_tree.from_string_tree
         |> udp.send(socket, address, port, _)
       {
-        Error(_) ->
-          io.println_error("Something went wrong sending udp announce")
+        Error(err) ->
+          io.println_error("Something went wrong sending udp announce: " <> err)
         Ok(_) -> Nil
       }
   }
