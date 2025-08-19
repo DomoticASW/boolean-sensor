@@ -157,8 +157,15 @@ fn start_wisp(
   bs_subj: Subject(bs_actor.BooleanSensorMessage),
   config: Configuration,
 ) -> Result(Nil, String) {
-  wisp_mist.handler(router.handle_request(_, bs_subj), wisp.random_string(64))
-  |> mist.new
+  mist.new(fn(req) {
+    let assert Ok(client_ip_addr) =
+      mist.get_client_info(req.body)
+      |> result.map(fn(info) { mist.ip_address_to_string(info.ip_address) })
+    wisp_mist.handler(
+      router.handle_request(_, client_ip_addr, bs_subj),
+      wisp.random_string(64),
+    )(req)
+  })
   |> mist.bind("0.0.0.0")
   |> mist.port(config.port)
   |> mist.start()

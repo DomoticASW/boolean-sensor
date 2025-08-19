@@ -13,17 +13,22 @@ import wisp.{type Request, type Response}
 
 pub fn handle_request(
   req: Request,
+  client_ip_addr: String,
   bs: Subject(BooleanSensorMessage),
 ) -> Response {
   use req <- middleware.basic(req)
   case wisp.path_segments(req) {
-    ["register"] -> register(req, bs)
+    ["register"] -> register(req, client_ip_addr, bs)
     ["check-status"] -> check_status(req, bs)
     _ -> wisp.not_found()
   }
 }
 
-fn register(req: Request, bs: Subject(BooleanSensorMessage)) -> Response {
+fn register(
+  req: Request,
+  server_host: String,
+  bs: Subject(BooleanSensorMessage),
+) -> Response {
   use <- wisp.require_method(req, Post)
   use body <- wisp.require_json(req)
 
@@ -34,11 +39,10 @@ fn register(req: Request, bs: Subject(BooleanSensorMessage)) -> Response {
       |> wisp.json_response(400)
     }
     Ok(RegisterBody(server_port:)) -> {
-      let host = req.host
       let assert RegisterResp(device_description:) =
         actor.call(bs, 5000, bs_actor.register_msg(
           _,
-          ServerAddress(host, server_port),
+          ServerAddress(server_host, server_port),
         ))
       encode_device_description(device_description)
       |> json.to_string_tree()

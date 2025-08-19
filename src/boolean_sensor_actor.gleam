@@ -351,7 +351,8 @@ fn log_failed_request(
 ) -> Nil {
   case res {
     Error(InvalidUtf8Response) -> io.println_error("Invalid UTF8 reponse")
-    Error(FailedToConnect(_, _)) -> io.println_error("Failed to connect")
+    Error(FailedToConnect(err, _)) ->
+      io.println_error("Failed to connect: " <> err.code)
     Ok(res) if res.status >= 200 && res.status < 300 -> Nil
     Ok(res) ->
       { "Error in response " <> int.to_string(res.status) <> " " <> res.body }
