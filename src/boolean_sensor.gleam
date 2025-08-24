@@ -24,6 +24,7 @@ type Configuration {
     port: Int,
     discovery_broadcast_addr: String,
     server_discovery_port: Int,
+    lan_hostname: String,
   )
 }
 
@@ -95,6 +96,14 @@ fn parse_server_discovery_port() -> Result(Int, String) {
   })
 }
 
+fn parse_lan_hostname() -> Result(String, String) {
+  let env_var = "LAN_HOSTNAME"
+  envoy.get(env_var)
+  |> result.map_error(fn(_) {
+    "Missing value for required env var: " <> env_var
+  })
+}
+
 fn parse_configuration(
   def_id id: String,
   def_target_condition target_condition: Condition,
@@ -120,6 +129,7 @@ fn parse_configuration(
   use server_address <- result.try(parse_server_address(default: server_address))
   use port <- result.try(parse_port(default: port))
   use server_discovery_port <- result.try(parse_server_discovery_port())
+  use lan_hostname <- result.try(parse_lan_hostname())
   Ok(Configuration(
     id:,
     name:,
@@ -130,6 +140,7 @@ fn parse_configuration(
     port:,
     discovery_broadcast_addr:,
     server_discovery_port:,
+    lan_hostname:,
   ))
 }
 
@@ -146,6 +157,7 @@ fn start_boolean_sensor_actor(
     device_port: config.port,
     server_discovery_port: config.server_discovery_port,
     discovery_broadcast_addr: config.discovery_broadcast_addr,
+    lan_hostname: config.lan_hostname,
   )
   |> result.map(fn(a) { a.data })
   |> result.map_error(fn(_) {
