@@ -19,6 +19,7 @@ pub fn handle_request(
   use req <- middleware.basic(req)
   case wisp.path_segments(req) {
     ["register"] -> register(req, client_ip_addr, bs)
+    ["unregister"] -> unregister(req, bs)
     ["check-status"] -> check_status(req, bs)
     _ -> wisp.not_found()
   }
@@ -49,6 +50,12 @@ fn register(
       |> wisp.json_response(200)
     }
   }
+}
+
+fn unregister(req: Request, bs: Subject(BooleanSensorMessage)) -> Response {
+  use <- wisp.require_method(req, Post)
+  actor.call(bs, 5000, bs_actor.unregister_msg)
+  wisp.ok()
 }
 
 fn check_status(req: Request, bs: Subject(BooleanSensorMessage)) -> Response {

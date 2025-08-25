@@ -68,6 +68,7 @@ pub type ServerAddress {
 
 pub type Message {
   Register(sender: Subject(Response), server_address: ServerAddress)
+  Unregister(sender: Subject(Nil))
   StatusCheck(sender: Subject(Response))
   ExecuteAction(sender: Subject(Response), action_id: String)
 }
@@ -77,6 +78,10 @@ pub fn register_msg(
   server_address: ServerAddress,
 ) -> BooleanSensorMessage {
   timer_actor.Other(Register(sender:, server_address:))
+}
+
+pub fn unregister_msg(sender: Subject(Nil)) -> BooleanSensorMessage {
+  timer_actor.Other(Unregister(sender:))
 }
 
 pub fn status_check_msg(sender: Subject(Response)) -> BooleanSensorMessage {
@@ -205,7 +210,7 @@ fn handle_message(
         }
         Some(_), Some(socket) -> {
           udp.close(socket)
-          s
+          BooleanSensor(..s, socket: option.None)
         }
         Some(_), option.None -> s
       }
@@ -244,6 +249,10 @@ fn handle_message(
             ),
           )
           BooleanSensor(..s, server_address: Some(server_address))
+        }
+        Unregister(sender:) -> {
+          actor.send(sender, Nil)
+          BooleanSensor(..s, server_address: option.None)
         }
       }
   }
